@@ -192,6 +192,14 @@ static void drawboard_work_func(struct work_struct *w)
 static char turn;
 static int finish;
 
+/* Workqueue for asynchronous bottom-half processing */
+static struct workqueue_struct *kxo_workqueue;
+
+/* Work item: holds a pointer to the function that is going to be executed
+ * asynchronously.
+ */
+static DECLARE_WORK(drawboard_work, drawboard_work_func);
+
 static void ai_one_work_func(struct work_struct *w)
 {
     ktime_t tv_start, tv_end;
@@ -224,6 +232,8 @@ static void ai_one_work_func(struct work_struct *w)
     pr_info("kxo: [CPU#%d] %s completed in %llu usec\n", cpu, __func__,
             (unsigned long long) nsecs >> 10);
     put_cpu();
+
+    queue_work(kxo_workqueue, &drawboard_work);
 }
 
 static void ai_two_work_func(struct work_struct *w)
@@ -258,15 +268,10 @@ static void ai_two_work_func(struct work_struct *w)
     pr_info("kxo: [CPU#%d] %s completed in %llu usec\n", cpu, __func__,
             (unsigned long long) nsecs >> 10);
     put_cpu();
+
+    queue_work(kxo_workqueue, &drawboard_work);
 }
 
-/* Workqueue for asynchronous bottom-half processing */
-static struct workqueue_struct *kxo_workqueue;
-
-/* Work item: holds a pointer to the function that is going to be executed
- * asynchronously.
- */
-static DECLARE_WORK(drawboard_work, drawboard_work_func);
 static DECLARE_WORK(ai_one_work, ai_one_work_func);
 static DECLARE_WORK(ai_two_work, ai_two_work_func);
 
@@ -299,7 +304,6 @@ static void game_tasklet_func(unsigned long __data)
         smp_wmb();
         queue_work(kxo_workqueue, &ai_two_work);
     }
-    queue_work(kxo_workqueue, &drawboard_work);
     tv_end = ktime_get();
 
     nsecs = (s64) ktime_to_ns(ktime_sub(tv_end, tv_start));
